@@ -1,4 +1,4 @@
 # How to set up this project
-1. Copy the pynq-z1 file into your Vivado installation. It should be in \<VivadoInstallationDirectory\>/data/xhub/boards/XilinxBoardStore/boards/Xilinx.
-2. Open Vivado and don't open a project! Instead, go to Tools->Run TCL-script and run regenerate_projects.tcl. Give it a couple of minutes, and then three projects should appear in Vivado.
-3. RSA_soc shouldn't be touched. RSA_accelerator contains the logic which communicates with the outside world. Exponentiation contains the math.
+1. Copy the pynq-z1 file into the correct place in Vivado directory. It should be located in \<VivadoInstallationDirectory\>/data/xhub/boards/XilinxBoardStore/boards/Xilinx. 
+2. Open Vivado without starting a new project! Instead, go to Tools->Run TCL-script and run regenerate_projects.tcl. Give it a couple of minutes, and then three projects should appear in Vivado. RSA_soc shouldn't be touched. RSA_accelerator contains the logic which communicates with the outside world. Exponentiation contains the math.
+3. If you add a new VHDL-file in Vivado, the default directory is wrong. You must therefore either manually select \<Project\>/source as your target, or clean it up at a later time. Clean up is done by running Tools-> Run TCL-script and then running cleanup.tcl. You must then run regenerate_projects.tcl again.
