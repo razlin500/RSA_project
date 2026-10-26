@@ -35,7 +35,7 @@ use ieee.numeric_std.all;
 entity PISO is
     Port ( D : in STD_LOGIC_VECTOR (255 downto 0);
            Q : out STD_LOGIC;
-           CLK : in STD_LOGIC;
+           clk : in STD_LOGIC;
            enable : in STD_LOGIC);
 end PISO;
 
@@ -44,9 +44,9 @@ architecture Behavioral of PISO is
 signal D_reg : STD_LOGIC_VECTOR (255 downto 0);
 
 begin
-    process(CLK)
+    process(clk)
     begin
-        if rising_edge(CLK) then
+        if rising_edge(clk) then
             if enable = '1' then
                 D_reg <= D;
                 Q <= D_reg(255);
