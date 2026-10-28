@@ -22,7 +22,8 @@ use ieee.numeric_std.all;
 entity rsa_core_control is
 	generic (
 		-- Users to add parameters here
-		C_BLOCK_SIZE          : integer := 256
+		C_BLOCK_SIZE          : integer := 256;
+        C_NUM_CORES       :  integer := 2
 	);
 	port (
 		-----------------------------------------------------------------------------
@@ -35,14 +36,13 @@ entity rsa_core_control is
 		-- Slave msgin interface
 		-----------------------------------------------------------------------------
 		-- Message that will be sent out is valid
-		msgin_valid             : in std_logic;
+		msgin_valid             : in std_logic; -- Note; distribute pairs of msgins to different exponentiation modules.
 		-- Slave ready to accept a new message
 		msgin_ready             : out std_logic;
 		-- Message that will be sent out of the rsa_msgin module
 		msgin_data              :  in std_logic_vector(C_BLOCK_SIZE-1 downto 0);
 		-- Indicates boundary of last packet
 		msgin_last              :  in std_logic;
-
 		-----------------------------------------------------------------------------
 		-- Master msgout interface
 		-----------------------------------------------------------------------------
@@ -66,78 +66,108 @@ entity rsa_core_control is
 end rsa_core_control;
 
 architecture rtl of rsa_core_control is
+    signal encoders_msgin_valid : std_logic_vector(C_NUM_CORES-1 downto 0);
+    signal encoders_msgin_ready : std_logic_vector(C_NUM_CORES-1 downto 0);
+    signal encoders_msgout_ready : std_logic_vector(C_NUM_CORES-1 downto 0);
+    signal encoders_msgout_valid : std_logic_vector(C_NUM_CORES-1 downto 0);
+    signal encoders_msgout_last : std_logic_vector(C_NUM_CORES-1 downto 0);
+    signal encoder_output_select :  natural range 0 to C_NUM_CORES - 1;
+    signal encoder_input_select :  natural range 0 to C_NUM_CORES - 1;
+    type block_array_t is array (0 to C_NUM_CORES-1)
+    of std_logic_vector(C_BLOCK_SIZE-1 downto 0);
 
-type fsm_state is (
-		--fill inn with necesarry states
-		AWAITING_INPUT, CALCULATING, HOLDING_OUTPUT, ERROR
-	);    
-        signal state_r, state_nxt : fsm_state;
-        signal hold_input, hold_output, calc_done, msg_last_iter : std_logic;
-       
-begin
-    u_rsa_core_datapath : entity work.rsa_core_datapath
-        generic map (C_BLOCK_SIZE => C_BLOCK_SIZE)
-        port map(
-            clk => clk,
-            reset_n => reset_n,
-            hold_input => hold_input,
-            hold_output => hold_output,
-            calc_done => calc_done,
-            msgin_data => msgin_data,
-            msgout_data => msgout_data,
-            key_e_d => key_e_d,
-            key_n => key_n
-        ); 
-    rsa_status   <= (others => '0');
+    signal encoders_msgout : block_array_t; -- Message out lines for each of the encoders.
 
-	main_fsm_process : process (state_r, calc_done, msgin_valid, msgout_ready, msgin_last)
+    subtype queue_node_t is natural range 0 to C_NUM_CORES - 1;
+    type queue_t is array (0 to C_NUM_CORES - 1) of queue_node_t; -- Linked list; one element points to the next.
+    signal output_queue : queue_t; -- Queue that holds what order the outputs need to be sent in.
+    signal last_queue_node : queue_node_t := 0; -- The last node we added, i.e. the one we need to send back the latest.
+    signal current_queue_node : queue_node_t := 0; -- The current node we're waiting for the result of, to send to the output.
+
+    signal any_ready : std_logic;
     begin
-        hold_input <= '0';
-        state_nxt <= state_r;
-        hold_output <= '0';
-        msgout_valid <= '0';
-        msgin_ready <= '0';
-        msgout_last <= '0';
-        case(state_r) is
-            when AWAITING_INPUT =>
-                msgin_ready <= '1';
-                if (msgin_valid and msgin_ready) then 
-                    msgout_last  <= msgin_last;
-                    msgin_ready <= '0';
-                    msg_last_iter <= msgin_last;
-                    state_nxt <= CALCULATING;
-                    hold_input <= '1';
+        
+        u_rsa_core_datapath : entity work.rsa_core_datapath
+        generic map (
+            C_BLOCK_SIZE => C_BLOCK_SIZE,
+            C_NUM_CORES  => C_NUM_CORES
+        )
+        port map (
+            clk                   => clk,
+            reset_n               => reset_n,
+            encoders_msgin_valid  => encoders_msgin_valid,
+            encoders_msgin_ready  => encoders_msgin_ready,
+            encoders_msgout_valid => encoders_msgout_valid,
+            encoders_msgout_ready => encoders_msgout_ready,
+            msgin_data            => msgin_data,
+            output_select         => encoder_output_select,
+            msgout_data           => msgout_data,
+            key_e_d               => key_e_d,
+            key_n                 => key_n
+        );
+        
+        encoder_output_select <= current_queue_node; -- By default, the current_queue node should always be routed to the output (though msgout_valid will only be 1 when calculations are done)
+        
+        any_ready <= or encoders_msgin_ready; -- Check if any encoder is available
+         find_available_encoder : process (encoders_msgin_ready) begin -- Finds the new encoder to be employed for calculations.
+            encoder_input_select <= 0; -- Default val.
+            for k in 0 to C_NUM_CORES - 1 loop
+                if encoders_msgin_ready(k) = '1' then
+                    encoder_input_select <= k;
+                    exit;
+                    end if;
+                end loop;
+        end process find_available_encoder;
+
+        route_msgin : process (msgin_valid, any_ready, encoder_input_select) begin -- Ensures encoder with idx 'encoder_input_select' actually loads the msgin_data and msgin_last...
+            encoders_msgin_valid <= (others => '0');
+            msgin_ready <= any_ready;
+            if any_ready = '1' then
+                if msgin_valid = '1' then
+                    msgin_ready <= '1';
+                    encoders_msgin_valid(encoder_input_select) <= '1';
+                    encoders_msgout_last(encoder_input_select) <= msgin_last;
                 end if;
-            when CALCULATING =>
-                    hold_input <= '1';
-                    if (calc_done) then
-                        state_nxt <= HOLDING_OUTPUT;
-                    end if;
-            when HOLDING_OUTPUT =>
-                hold_input <= '1';
-                hold_output <= '1';
+            end if;
+        end process route_msgin;
+
+        route_msgout : process (msgout_ready, encoders_msgout_valid, current_queue_node, encoders_msgout_last) begin -- Ensures current_queue_node actually is sent to the output if the output is ready, and the calculation is done.
+            msgout_valid <= '0';
+            encoders_msgout_ready <= (others => '0');
+            msgout_last <= encoders_msgout_last(current_queue_node);
+           if encoders_msgout_valid(current_queue_node) then
                 msgout_valid <= '1';
-                msgout_last <= msg_last_iter;
-                if (msgout_ready) then
-                    state_nxt <= AWAITING_INPUT;
-                    msgin_ready <= '0';
+                if msgout_ready then
+                    encoders_msgout_ready(current_queue_node) <= '1'; -- Actually send the output. 
                     end if;
-            when others =>
-                state_nxt <= ERROR;
-        end case;
+            end if;
 
+            end process route_msgout;
 
-    end process main_fsm_process;
+        
+        queue_update : process (clk, reset_n) begin -- Send the newly employed encoder to the end of the queue (since it has now read relevant data)
+            if reset_n = '0' then
+                last_queue_node <= 0;
+                current_queue_node <= 0;
+                output_queue <= (others => 0);
+            elsif rising_edge(clk) then
+                if msgin_valid = '1' then 
+                    if any_ready = '1' then -- Move to the next element, so we can check for new available input to operate on.
+                        output_queue(last_queue_node) <= encoder_input_select;
+                        last_queue_node <= encoder_input_select; -- Have to wait to do this, since otherwise we would try to queue all in one clock cycle, which obv. is invalid
+                        end if;
+                    end if;
 
-    update_state : process (clk, reset_n)
-    begin
-        if (reset_n = '0') then
-            state_r <= AWAITING_INPUT;
-        elsif (rising_edge(clk)) then
-            state_r <= state_nxt;
-        end if;
-    end process update_state;
+                if msgout_valid = '1' then
+                    if msgout_ready = '1' then
+                        if msgout_last = '0' then -- Only if next node exists.
+                            current_queue_node <= output_queue(current_queue_node); -- Move on to the output of the next node
+                            end if;
+                        end if;
+                    end if;
 
-
+                end if;
+            end process queue_update;
+        
 
 end rtl;
