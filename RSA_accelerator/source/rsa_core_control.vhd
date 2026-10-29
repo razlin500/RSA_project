@@ -80,11 +80,12 @@ architecture rtl of rsa_core_control is
     signal output_queue : queue_t; -- Queue that holds what order the outputs need to be sent in.
     signal last_queue_node : queue_node_t := 0; -- The last node we added, i.e. the one we need to send back the latest.
     signal current_queue_node : queue_node_t := 0; -- The current node we're waiting for the result of, to send to the output.
+    signal queue_empty : std_logic := '1'; -- '1' when no encoder is waiting in line (head/tail alone can't tell this)
 
     signal any_ready : std_logic;
     begin
         rsa_status <= (others => '0');
-        
+
         encoders_output_select <= current_queue_node; -- By default, the current_queue node should always be routed to the output (though msgout_valid will only be 1 when calculations are done)
         
         any_ready <= or encoders_msgin_ready; -- Check if any encoder is available
@@ -129,18 +130,28 @@ architecture rtl of rsa_core_control is
                 last_queue_node <= 0;
                 current_queue_node <= 0;
                 output_queue <= (others => 0);
+                queue_empty <= '1';
             elsif rising_edge(clk) then
+                -- Output sent. NOTE: this block must stay ABOVE the input block, so the
+                -- input block's assignments win when both happen in the same cycle.
+                if msgout_valid = '1' then
+                    if msgout_ready = '1' then
+                            if last_queue_node /= current_queue_node then
+                                current_queue_node <= output_queue(current_queue_node); -- Move on to the output of the next node
+                            else
+                                queue_empty <= '1'; -- The node we just sent was the only one in line
+                                end if;
+                        end if;
+                    end if;
+
                 if msgin_valid = '1' then 
                     if any_ready = '1' then -- Move to the next element, so we can check for new available input to operate on.
                         output_queue(last_queue_node) <= encoder_input_select;
                         last_queue_node <= encoder_input_select; -- Have to wait to do this, since otherwise we would try to queue all in one clock cycle, which obv. is invalid
-                        end if;
-                    end if;
-
-                if msgout_valid = '1' then
-                    if msgout_ready = '1' then
-                        if msgout_last = '0' then -- Only if next node exists.
-                            current_queue_node <= output_queue(current_queue_node); -- Move on to the output of the next node
+                        queue_empty <= '0';
+                        -- Line is empty, or its only node is being sent this same cycle: the new node is first in line
+                        if queue_empty = '1' or (msgout_valid = '1' and msgout_ready = '1' and last_queue_node = current_queue_node) then
+                            current_queue_node <= encoder_input_select;
                             end if;
                         end if;
                     end if;
