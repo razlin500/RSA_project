@@ -11,7 +11,7 @@ use ieee.numeric_std.all;
 -- Assumes message < modulus.
 entity exponentiation is
     generic (
-        C_block_size : integer := 256
+        C_BLOCK_SIZE : integer := 256
     );
     port (
         -- input control
@@ -19,18 +19,18 @@ entity exponentiation is
         ready_in    : out std_logic;
 
         -- input data
-        message     : in  std_logic_vector(C_block_size-1 downto 0);
-        key         : in  std_logic_vector(C_block_size-1 downto 0);
+        message     : in  std_logic_vector(C_BLOCK_SIZE-1 downto 0);
+        key         : in  std_logic_vector(C_BLOCK_SIZE-1 downto 0);
 
         -- output control
         ready_out   : in  std_logic;
         valid_out   : out std_logic;
 
         -- output data
-        result      : out std_logic_vector(C_block_size-1 downto 0);
+        result      : out std_logic_vector(C_BLOCK_SIZE-1 downto 0);
 
         -- modulus
-        modulus     : in  std_logic_vector(C_block_size-1 downto 0);
+        modulus     : in  std_logic_vector(C_BLOCK_SIZE-1 downto 0);
 
         -- utility
         clk         : in  std_logic;
@@ -42,23 +42,23 @@ architecture expBehave of exponentiation is
     type state_t is (S_IDLE, S_START, S_WAIT, S_DONE);
     signal state : state_t := S_IDLE;
 
-    signal P_reg : unsigned(C_block_size-1 downto 0) := (others => '0');
-    signal C_reg : unsigned(C_block_size-1 downto 0) := (others => '0');
-    signal e_reg : unsigned(C_block_size-1 downto 0) := (others => '0');
-    signal n_reg : std_logic_vector(C_block_size-1 downto 0) := (others => '0');
+    signal P_reg : unsigned(C_BLOCK_SIZE-1 downto 0) := (others => '0');
+    signal C_reg : unsigned(C_BLOCK_SIZE-1 downto 0) := (others => '0');
+    signal e_reg : unsigned(C_BLOCK_SIZE-1 downto 0) := (others => '0');
+    signal n_reg : std_logic_vector(C_BLOCK_SIZE-1 downto 0) := (others => '0');
 
     signal mult_start : std_logic;
-    signal sq_result  : std_logic_vector(C_block_size-1 downto 0);  -- P*P mod n
-    signal prod_result: std_logic_vector(C_block_size-1 downto 0);  -- C*P mod n
+    signal sq_result  : std_logic_vector(C_BLOCK_SIZE-1 downto 0);  -- P*P mod n
+    signal prod_result: std_logic_vector(C_BLOCK_SIZE-1 downto 0);  -- C*P mod n
     signal sq_valid   : std_logic;
     signal prod_valid : std_logic;
 
-    signal e_next : unsigned(C_block_size-1 downto 0);
+    signal e_next : unsigned(C_BLOCK_SIZE-1 downto 0);
 begin
 
     -- squares P
     i1_multiplication : entity work.multiplication
-        generic map (C_block_size_m => C_block_size)
+        generic map (C_BLOCK_SIZE_m => C_BLOCK_SIZE)
         port map (
             A_in         => std_logic_vector(P_reg),
             B_in         => std_logic_vector(P_reg),
@@ -72,7 +72,7 @@ begin
 
     -- multiplies C by P
     i2_multiplication : entity work.multiplication
-        generic map (C_block_size_m => C_block_size)
+        generic map (C_BLOCK_SIZE_m => C_BLOCK_SIZE)
         port map (
             A_in         => std_logic_vector(P_reg),
             B_in         => std_logic_vector(C_reg),
@@ -103,7 +103,7 @@ begin
                             P_reg <= unsigned(message);
                             e_reg <= unsigned(key);
                             n_reg <= modulus;
-                            C_reg <= to_unsigned(1, C_block_size);
+                            C_reg <= to_unsigned(1, C_BLOCK_SIZE);
                             state <= S_START;
                         end if;
 
