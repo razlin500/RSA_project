@@ -67,22 +67,56 @@ end rsa_core;
 
 architecture rtl of rsa_core is
 
+constant C_NUM_CORES : natural := 2;
+signal encoders_msgin_valid : std_logic_vector(C_NUM_CORES-1 downto 0) := (others => '0');
+signal encoders_msgin_ready : std_logic_vector(C_NUM_CORES-1 downto 0) := (others => '0');
+signal encoders_msgout_ready : std_logic_vector(C_NUM_CORES-1 downto 0) := (others => '0');
+signal encoders_msgout_valid : std_logic_vector(C_NUM_CORES-1 downto 0) := (others => '0');
+signal encoders_output_select :  natural range 0 to C_NUM_CORES - 1 := 0;
+      
 begin
-	i_exponentiation : entity work.exponentiation
-		generic map (
-			C_block_size => C_BLOCK_SIZE
-		)
-		port map (
-			message   => msgin_data  ,
-			key       => key_e_d     ,
-			valid_in  => calc_in_valid ,
-			valid_out => calc_done,
-			result    => msgout_data ,
-			modulus   => key_n       ,
-			clk       => clk         ,
-			reset_n   => reset_n
-		);
+	u_rsa_core_control : entity work.rsa_core_control
+	generic map (
+            C_BLOCK_SIZE => C_BLOCK_SIZE,
+            C_NUM_CORES  => C_NUM_CORES
+        )
+        port map (
+            clk                   => clk,
+            reset_n               => reset_n,
+			msgin_ready => msgin_ready,
+			msgin_last => msgin_last,
+			msgin_valid => msgin_valid,
+			msgout_valid => msgout_valid,
+			msgout_ready => msgout_ready,
+			msgout_last => msgout_last,
+            encoders_msgin_valid  => encoders_msgin_valid,
+            encoders_msgin_ready  => encoders_msgin_ready,
+            encoders_msgout_valid => encoders_msgout_valid,
+            encoders_msgout_ready => encoders_msgout_ready,
+            encoders_output_select => encoders_output_select,
+			rsa_status => rsa_status
+    
+        );
 
-	msgout_last  <= msgin_last;
-	rsa_status   <= (others => '0');
+	u_rsa_core_datapath : entity work.rsa_core_datapath
+        generic map (
+            C_BLOCK_SIZE => C_BLOCK_SIZE,
+            C_NUM_CORES  => C_NUM_CORES
+        )
+        port map (
+            clk                   => clk,
+            reset_n               => reset_n,
+            encoders_msgin_valid  => encoders_msgin_valid,
+            encoders_msgin_ready  => encoders_msgin_ready,
+            encoders_msgout_valid => encoders_msgout_valid,
+            encoders_msgout_ready => encoders_msgout_ready,
+            msgin_data            => msgin_data,
+            encoders_output_select  => encoders_output_select,
+            msgout_data           => msgout_data,
+            key_e_d               => key_e_d,
+            key_n                 => key_n
+        );
+
+
+	
 end rtl;

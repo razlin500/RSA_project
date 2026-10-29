@@ -39,8 +39,7 @@ entity rsa_core_control is
 		msgin_valid             : in std_logic; -- Note; distribute pairs of msgins to different exponentiation modules.
 		-- Slave ready to accept a new message
 		msgin_ready             : out std_logic;
-		-- Message that will be sent out of the rsa_msgin module
-		msgin_data              :  in std_logic_vector(C_BLOCK_SIZE-1 downto 0);
+	
 		-- Indicates boundary of last packet
 		msgin_last              :  in std_logic;
 		-----------------------------------------------------------------------------
@@ -50,33 +49,31 @@ entity rsa_core_control is
 		msgout_valid            : out std_logic;
 		-- Slave ready to accept a new message
 		msgout_ready            :  in std_logic;
-		-- Message that will be sent out of the rsa_msgin module
-		msgout_data             : out std_logic_vector(C_BLOCK_SIZE-1 downto 0);
 		-- Indicates boundary of last packet
 		msgout_last             : out std_logic;
+
+        -----------------------------------------------------------------------------
+		-- Interface to the datapath, one bit per encoder
+		-----------------------------------------------------------------------------
+		encoders_msgin_valid  : out std_logic_vector(C_NUM_CORES-1 downto 0);
+		encoders_msgin_ready  : in  std_logic_vector(C_NUM_CORES-1 downto 0);
+		encoders_msgout_valid : in  std_logic_vector(C_NUM_CORES-1 downto 0);
+		encoders_msgout_ready : out std_logic_vector(C_NUM_CORES-1 downto 0);
+		encoders_output_select : out natural range 0 to C_NUM_CORES-1;
 
 		-----------------------------------------------------------------------------
 		-- Interface to the register block
 		-----------------------------------------------------------------------------
-		key_e_d                 :  in std_logic_vector(C_BLOCK_SIZE-1 downto 0);
-		key_n                   :  in std_logic_vector(C_BLOCK_SIZE-1 downto 0);
+
 		rsa_status              : out std_logic_vector(31 downto 0)
 
 	);
 end rsa_core_control;
 
 architecture rtl of rsa_core_control is
-    signal encoders_msgin_valid : std_logic_vector(C_NUM_CORES-1 downto 0);
-    signal encoders_msgin_ready : std_logic_vector(C_NUM_CORES-1 downto 0);
-    signal encoders_msgout_ready : std_logic_vector(C_NUM_CORES-1 downto 0);
-    signal encoders_msgout_valid : std_logic_vector(C_NUM_CORES-1 downto 0);
+    
     signal encoders_msgout_last : std_logic_vector(C_NUM_CORES-1 downto 0);
-    signal encoder_output_select :  natural range 0 to C_NUM_CORES - 1;
     signal encoder_input_select :  natural range 0 to C_NUM_CORES - 1;
-    type block_array_t is array (0 to C_NUM_CORES-1)
-    of std_logic_vector(C_BLOCK_SIZE-1 downto 0);
-
-    signal encoders_msgout : block_array_t; -- Message out lines for each of the encoders.
 
     subtype queue_node_t is natural range 0 to C_NUM_CORES - 1;
     type queue_t is array (0 to C_NUM_CORES - 1) of queue_node_t; -- Linked list; one element points to the next.
@@ -86,27 +83,9 @@ architecture rtl of rsa_core_control is
 
     signal any_ready : std_logic;
     begin
+        rsa_status <= (others => '0');
         
-        u_rsa_core_datapath : entity work.rsa_core_datapath
-        generic map (
-            C_BLOCK_SIZE => C_BLOCK_SIZE,
-            C_NUM_CORES  => C_NUM_CORES
-        )
-        port map (
-            clk                   => clk,
-            reset_n               => reset_n,
-            encoders_msgin_valid  => encoders_msgin_valid,
-            encoders_msgin_ready  => encoders_msgin_ready,
-            encoders_msgout_valid => encoders_msgout_valid,
-            encoders_msgout_ready => encoders_msgout_ready,
-            msgin_data            => msgin_data,
-            output_select         => encoder_output_select,
-            msgout_data           => msgout_data,
-            key_e_d               => key_e_d,
-            key_n                 => key_n
-        );
-        
-        encoder_output_select <= current_queue_node; -- By default, the current_queue node should always be routed to the output (though msgout_valid will only be 1 when calculations are done)
+        encoders_output_select <= current_queue_node; -- By default, the current_queue node should always be routed to the output (though msgout_valid will only be 1 when calculations are done)
         
         any_ready <= or encoders_msgin_ready; -- Check if any encoder is available
          find_available_encoder : process (encoders_msgin_ready) begin -- Finds the new encoder to be employed for calculations.

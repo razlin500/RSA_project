@@ -36,7 +36,7 @@ entity rsa_core_datapath is
         encoders_msgout_ready   : in std_logic_vector(C_NUM_CORES-1 downto 0);
         encoders_msgin_ready   : out std_logic_vector(C_NUM_CORES-1 downto 0);
         encoders_msgout_valid   : out std_logic_vector(C_NUM_CORES-1 downto 0);
-        output_select                 : in natural range 0 to C_NUM_CORES - 1;
+        encoders_output_select                 : in natural range 0 to C_NUM_CORES - 1;
 
 		-----------------------------------------------------------------------------
 		-- Slave msgin interface
@@ -91,7 +91,7 @@ architecture rtl of rsa_core_datapath is
         end generate generate_encoders;
         
 
-     msgout_data <= encoders_msgout(output_select);
+     msgout_data <= encoders_msgout(encoders_output_select);
 
 
 end rtl;
