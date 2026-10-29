@@ -67,7 +67,7 @@ end rsa_core;
 
 architecture rtl of rsa_core is
 
-constant C_NUM_CORES : natural := 2;
+constant C_NUM_CORES : natural := 1;
 signal encoders_msgin_valid : std_logic_vector(C_NUM_CORES-1 downto 0) := (others => '0');
 signal encoders_msgin_ready : std_logic_vector(C_NUM_CORES-1 downto 0) := (others => '0');
 signal encoders_msgout_ready : std_logic_vector(C_NUM_CORES-1 downto 0) := (others => '0');

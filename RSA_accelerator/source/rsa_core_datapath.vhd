@@ -74,7 +74,7 @@ architecture rtl of rsa_core_datapath is
         
         generate_encoders : for k in 0 to C_NUM_CORES - 1 generate
             u_encoder : entity work.exponentiation
-            generic map (C_block_size => C_BLOCK_SIZE)
+            generic map (C_BLOCK_SIZE => C_BLOCK_SIZE)
             port map (
                 valid_in     => encoders_msgin_valid(k),
                 ready_in         => encoders_msgin_ready(k),
