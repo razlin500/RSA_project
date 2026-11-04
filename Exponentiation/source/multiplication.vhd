@@ -29,38 +29,36 @@ use IEEE.NUMERIC_STD.ALL;
 -- result_valid is cleared on start/reset and set when the result is ready (stays set).
 entity multiplication is
     generic (
-        C_block_size_m : integer := 256
+        C_BLOCK_SIZE : integer := 256
     );
     port (
-        A_in         : in  std_logic_vector(C_block_size_m-1 downto 0);
-        B_in         : in  std_logic_vector(C_block_size_m-1 downto 0);
-        modulus      : in  std_logic_vector(C_block_size_m-1 downto 0);
-        Input_valid  : in  std_logic;
+        multiplicand_in         : in  std_logic_vector(C_BLOCK_SIZE-1 downto 0);
+        multiplier_in         : in  std_logic_vector(C_BLOCK_SIZE-1 downto 0);
+        modulus      : in  std_logic_vector(C_BLOCK_SIZE-1 downto 0);
+        input_valid  : in  std_logic;
         clk          : in  std_logic;
         reset_n      : in  std_logic;
-        result       : out std_logic_vector(C_block_size_m-1 downto 0);
+        result       : out std_logic_vector(C_BLOCK_SIZE-1 downto 0);
         result_valid : out std_logic
     );
 end multiplication;
 
 architecture rtl of multiplication is
-    constant C : integer := C_block_size_m;
-
-    signal A_reg, B_reg : unsigned(C-1 downto 0) := (others => '0');
-    signal P            : unsigned(C-1 downto 0) := (others => '0');
-    signal counter      : integer range 0 to C := C;
-    signal done         : std_logic := '0';
+    signal multiplicand_r, multiplier_r : unsigned(C_BLOCK_SIZE-1 downto 0) := (others => '0');
+    signal product_r            : unsigned(C_BLOCK_SIZE-1 downto 0) := (others => '0');
+    signal counter_r      : integer range 0 to C_BLOCK_SIZE := C_BLOCK_SIZE;
+    signal done_r         : std_logic := '0';
 
     -- C+3 bits: top bit acts as sign/borrow flag after subtraction
-    signal addend, t, t1, t2 : unsigned(C+2 downto 0);
-    signal n1, n2            : unsigned(C+2 downto 0);
+    signal addend, t, t1, t2 : unsigned(C_BLOCK_SIZE+2 downto 0);
+    signal n1, n2            : unsigned(C_BLOCK_SIZE+2 downto 0);
 begin
-    n1 <= resize(unsigned(modulus), C+3);
+    n1 <= resize(unsigned(modulus), C_BLOCK_SIZE+3);
     n2 <= shift_left(n1, 1);
 
-    addend <= resize(A_reg, C+3) when B_reg(C-1) = '1' else (others => '0');
+    addend <= resize(multiplicand_r, C_BLOCK_SIZE+3) when multiplier_r(C_BLOCK_SIZE-1) = '1' else (others => '0');
 
-    t  <= shift_left(resize(P, C+3), 1) + addend;   -- 2P + b_i*A
+    t  <= shift_left(resize(product_r, C_BLOCK_SIZE+3), 1) + addend;   -- 2P + b_i*A
     t1 <= t - n1;
     t2 <= t - n2;
 
@@ -68,31 +66,31 @@ begin
     begin
         if rising_edge(clk) then
             if reset_n = '0' then
-                counter <= C;
-                done    <= '0';
-            elsif Input_valid = '1' then
-                A_reg   <= unsigned(A_in);
-                B_reg   <= unsigned(B_in);
-                P       <= (others => '0');
-                counter <= 0;
-                done    <= '0';
-            elsif counter < C then
-                B_reg   <= shift_left(B_reg, 1);
-                counter <= counter + 1;
-                if counter = C-1 then
-                    done <= '1';
+                counter_r <= C_BLOCK_SIZE;
+                done_r    <= '0';
+            elsif input_valid = '1' then
+                multiplicand_r   <= unsigned(multiplicand_in);
+                multiplier_r   <= unsigned(multiplier_in);
+                product_r       <= (others => '0');
+                counter_r <= 0;
+                done_r    <= '0';
+            elsif counter_r < C_BLOCK_SIZE then
+                multiplier_r   <= shift_left(multiplier_r, 1);
+                counter_r <= counter_r + 1;
+                if counter_r = C_BLOCK_SIZE-1 then
+                    done_r <= '1';
                 end if;
-                if t2(C+2) = '0' then          -- t >= 2n
-                    P <= t2(C-1 downto 0);
-                elsif t1(C+2) = '0' then       -- t >= n
-                    P <= t1(C-1 downto 0);
+                if t2(C_BLOCK_SIZE+2) = '0' then          -- t >= 2n
+                    product_r <= t2(C_BLOCK_SIZE-1 downto 0);
+                elsif t1(C_BLOCK_SIZE+2) = '0' then       -- t >= n
+                    product_r <= t1(C_BLOCK_SIZE-1 downto 0);
                 else
-                    P <= t(C-1 downto 0);
+                    product_r <= t(C_BLOCK_SIZE-1 downto 0);
                 end if;
             end if;
         end if;
     end process;
 
-    result       <= std_logic_vector(P);
-    result_valid <= done;
+    result       <= std_logic_vector(product_r);
+    result_valid <= done_r;
 end rtl;
