@@ -106,58 +106,64 @@ architecture rtl of rsa_core_control is
                 if msgin_valid = '1' then
                     msgin_ready <= '1';
                     encoders_msgin_valid(encoder_input_select) <= '1';
-                    encoders_msgout_last(encoder_input_select) <= msgin_last;
+                    --encoders_msgout_last(encoder_input_select) <= msgin_last;
                 end if;
             end if;
         end process route_msgin;
 
-        route_msgout : process (msgout_ready, encoders_msgout_valid, current_queue_node, encoders_msgout_last) begin -- Ensures current_queue_node actually is sent to the output if the output is ready, and the calculation is done.
+        route_msgout : process (
+            msgout_ready,
+            encoders_msgout_valid,
+            current_queue_node,
+            encoders_msgout_last
+        )
+        begin
             msgout_valid <= '0';
             encoders_msgout_ready <= (others => '0');
             msgout_last <= encoders_msgout_last(current_queue_node);
-           if encoders_msgout_valid(current_queue_node) then
+
+            if encoders_msgout_valid(current_queue_node) = '1' then
                 msgout_valid <= '1';
-                if msgout_ready then
-                    encoders_msgout_ready(current_queue_node) <= '1'; -- Actually send the output. 
-                    end if;
-            end if;
 
-            end process route_msgout;
-
-        
-        queue_update : process (clk, reset_n) begin -- Send the newly employed encoder to the end of the queue (since it has now read relevant data)
-            if reset_n = '0' then
-                last_queue_node <= 0;
-                current_queue_node <= 0;
-                output_queue <= (others => 0);
-                queue_empty <= '1';
-            elsif rising_edge(clk) then
-                -- Output sent. NOTE: this block must stay ABOVE the input block, so the
-                -- input block's assignments win when both happen in the same cycle.
-                if msgout_valid = '1' then
-                    if msgout_ready = '1' then
-                            if last_queue_node /= current_queue_node then
-                                current_queue_node <= output_queue(current_queue_node); -- Move on to the output of the next node
-                            else
-                                queue_empty <= '1'; -- The node we just sent was the only one in line
-                                end if;
-                        end if;
-                    end if;
-
-                if msgin_valid = '1' then 
-                    if any_ready = '1' then -- Move to the next element, so we can check for new available input to operate on.
-                        output_queue(last_queue_node) <= encoder_input_select;
-                        last_queue_node <= encoder_input_select; -- Have to wait to do this, since otherwise we would try to queue all in one clock cycle, which obv. is invalid
-                        queue_empty <= '0';
-                        -- Line is empty, or its only node is being sent this same cycle: the new node is first in line
-                        if queue_empty = '1' or (msgout_valid = '1' and msgout_ready = '1' and last_queue_node = current_queue_node) then
-                            current_queue_node <= encoder_input_select;
-                            end if;
-                        end if;
-                    end if;
-
+                if msgout_ready = '1' then
+                    encoders_msgout_ready(current_queue_node) <= '1';
                 end if;
-            end process queue_update;
+            end if;
+        end process route_msgout;
+
         
+        queue_update : process (clk, reset_n)
+        begin
+    if reset_n = '0' then
+        last_queue_node <= 0;
+        current_queue_node <= 0;
+        output_queue <= (others => 0);
+        queue_empty <= '1';
+        encoders_msgout_last <= (others => '0');
+
+    elsif rising_edge(clk) then
+        if msgout_valid = '1' and msgout_ready = '1' then
+            if last_queue_node /= current_queue_node then
+                current_queue_node <= output_queue(current_queue_node);
+            else
+                queue_empty <= '1';
+            end if;
+        end if;
+
+        if msgin_valid = '1' and msgin_ready = '1' then
+            encoders_msgout_last(encoder_input_select) <= msgin_last;
+
+            output_queue(last_queue_node) <= encoder_input_select;
+            last_queue_node <= encoder_input_select;
+            queue_empty <= '0';
+
+            if queue_empty = '1' or
+               (msgout_valid = '1' and msgout_ready = '1' and
+                last_queue_node = current_queue_node) then
+                current_queue_node <= encoder_input_select;
+            end if;
+        end if;
+    end if;
+end process;
 
 end rtl;
